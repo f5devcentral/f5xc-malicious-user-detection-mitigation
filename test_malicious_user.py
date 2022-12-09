@@ -24,7 +24,7 @@ lb_domain = user_input["domain"]
 
 print(text2art("F5 XC Automation", font="small"))
 
-# boolean variable: to be update when requests to https lb returns any response code 
+# boolean variable: to be update when requests to https lb sends back a response code 
 check = 0
 # request count variable: increments with each unsuccesful request to https lb (max_limit=10) 
 req_count = 0
@@ -55,7 +55,7 @@ def validate_deploy(secure=False):
                 with open(git_env, "a") as bashfile:
                     bashfile.write("EXIT=false")
         except requests.exceptions.ConnectionError:
-            if req_count == 15:
+            if req_count == 10:
                 print('https://{} is not reachable (Exception raised)'.format(lb_domain))
                 with open(git_env, "a") as bashfile:
                     bashfile.write("EXIT=true")
