@@ -4,11 +4,12 @@ import os
 import sys
 import json
 import time
+import urllib3
 import requests
 from art import *
 from tqdm import tqdm
 from requests.structures import CaseInsensitiveDict
-
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # user inputs
 user_input = json.load(open('./user_inputs.json', 'r'))
@@ -23,6 +24,11 @@ lb_domain = user_input["domain"]
 
 print(text2art("F5 XC Automation", font="small"))
 
+# boolean variable: to be update when requests to https lb returns any response code 
+check = 0
+# request count variable: increments with each unsuccesful request to https lb (max_limit=10) 
+req_count = 0
+
 
 def validate_deploy(secure=False):
     """ 
@@ -32,30 +38,34 @@ def validate_deploy(secure=False):
     secure (Boolean): request protocol HTTP[False]/HTTPS[True]    
     """
     git_env = os.getenv('GITHUB_ENV')
+    global check, req_count
     if secure:
         # try/except block to handle connection exception 
         try:
             req = requests.get("https://{}".format(lb_domain), verify=False, timeout=5)
             # verification of request's reponse code
             if req.status_code != 200:
-                print('Request status code not equal to 200')
+                print('Request status code not equal to 200, please check the IP and port of hosted application')
+                check = 1
                 with open(git_env, "a") as bashfile:
                     bashfile.write("EXIT=true")
             else:
                 print('Request to https lb is successful')
+                check = 1
                 with open(git_env, "a") as bashfile:
                     bashfile.write("EXIT=false")
         except requests.exceptions.ConnectionError:
-            print('https://{} is not reachable (Exception raised)'.format(lb_domain))
-            with open(git_env, "a") as bashfile:
-                bashfile.write("EXIT=true")
+            if req_count == 15:
+                print('https://{} is not reachable (Exception raised)'.format(lb_domain))
+                with open(git_env, "a") as bashfile:
+                    bashfile.write("EXIT=true")
     else:
         # try/except block to handle connection exception 
         try:
             req = requests.get("http://{}".format(lb_domain), timeout=5)
             # verification of request's reponse code
             if req.status_code != 200:
-                print('Request status code not equal to 200')
+                print('Request status code not equal to 200, please check the IP and port of hosted application')
                 with open(git_env, "a") as bashfile:
                     bashfile.write("EXIT=true")
             else:
@@ -80,6 +90,7 @@ def get_tor_session():
 def tor_requests():
     """ The function will generate tor requests """
     session = get_tor_session()
+    time.sleep(10)
     print("============= Pumping Tor Requests =============")
     for reqs in tqdm(range(0, 50), desc="tor requests"):
         session.get("http://{}".format(lb_domain))
@@ -125,11 +136,17 @@ def mal_user_timeline():
 def main():
     if sys.argv[1] == "secure" and sys.argv[2] == "True":
         # function call to validate reachability of https lb
-        time.sleep(30)
-        validate_deploy(True)
+        global check, req_count
+        for status in tqdm(range(10), desc="accessibility check"):
+            if check != 1:
+                req_count += 1
+                time.sleep(60)
+                validate_deploy(True)
+            else:
+                break        
     elif sys.argv[1] == "secure" and sys.argv[2] == "False":
         # function call to validate reachability of http lb
-        time.sleep(10)
+        time.sleep(20)
         validate_deploy()
     elif sys.argv[1] == "tor":
         # function call to generate tor requests
